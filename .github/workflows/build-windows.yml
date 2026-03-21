@@ -1,0 +1,74 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'toeic_speaking/**'
+  workflow_dispatch:   # 允许手动触发
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install PyQt5 pyttsx3 pyinstaller
+
+      - name: Build EXE with PyInstaller
+        working-directory: toeic_speaking
+        run: |
+          pyinstaller --onefile --windowed `
+            --name "TOEIC_Speaking_Practice" `
+            --add-data "images;images" `
+            --add-data "audio;audio" `
+            main.py
+
+      - name: Create release package
+        working-directory: toeic_speaking
+        run: |
+          New-Item -ItemType Directory -Force dist\TOEIC_Speaking_Practice_Package
+          Copy-Item dist\TOEIC_Speaking_Practice.exe dist\TOEIC_Speaking_Practice_Package\
+          New-Item -ItemType Directory -Force dist\TOEIC_Speaking_Practice_Package\images
+          New-Item -ItemType Directory -Force dist\TOEIC_Speaking_Practice_Package\audio
+          Copy-Item -Path images\* -Destination dist\TOEIC_Speaking_Practice_Package\images\ -ErrorAction SilentlyContinue
+          Compress-Archive -Path dist\TOEIC_Speaking_Practice_Package\* `
+            -DestinationPath dist\TOEIC_Speaking_Practice_Windows.zip
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TOEIC_Speaking_Practice_Windows
+          path: toeic_speaking/dist/TOEIC_Speaking_Practice_Windows.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: "TOEIC Speaking Practice v${{ github.run_number }}"
+          body: |
+            ## TOEIC 口语练习软件 Windows 版
+
+            ### 下载与使用
+            1. 下载 `TOEIC_Speaking_Practice_Windows.zip`
+            2. 解压到任意文件夹
+            3. 双击运行 `TOEIC_Speaking_Practice.exe`
+
+            ### 注意
+            - 首次运行会自动创建 `toeic_speaking_config.json` 配置文件
+            - 如需使用语音功能，确保 Windows 已安装英语 TTS 语音包
+          files: toeic_speaking/dist/TOEIC_Speaking_Practice_Windows.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
