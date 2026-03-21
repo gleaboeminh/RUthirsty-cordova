@@ -546,11 +546,162 @@ class InstructionBox(QGroupBox):
 
 
 # ============================================================
-# PART 1 WIDGET — Read Aloud
+# DIRECTIONS WIDGET — TOEIC Speaking Test Directions
+# ============================================================
+class DirectionsWidget(QWidget):
+    """Displays the TOEIC Speaking Test Directions page."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._build_ui()
+
+    def _build_ui(self):
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        content = QWidget()
+        content.setStyleSheet("background: white;")
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(56, 40, 56, 40)
+        cl.setSpacing(18)
+
+        # Title — at least 3pt larger than body (body=12pt, title=18pt), bold
+        title = QLabel("TOEIC® Speaking Test Directions")
+        title.setFont(QFont("Arial", 18, QFont.Bold))
+        title.setStyleSheet("color: #1a2a3a;")
+        cl.addWidget(title)
+
+        # Intro paragraph
+        intro = QLabel(
+            "This is the TOEIC® Speaking test. This test includes 11 questions that measure "
+            "different aspects of your speaking ability. The test lasts approximately 20 minutes."
+        )
+        intro.setFont(QFont("Arial", 12))
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color: #34495e;")
+        cl.addWidget(intro)
+
+        sep1 = QFrame()
+        sep1.setFrameShape(QFrame.HLine)
+        sep1.setStyleSheet("color: #ddd; margin: 4px 0;")
+        cl.addWidget(sep1)
+
+        # Question groups
+        groups = [
+            ("Question 1 – 2",
+             "Read a text aloud",
+             "pronunciation, intonation and stress"),
+            ("Question 3 – 4",
+             "Describe a picture",
+             "all of the above (pronunciation, intonation and stress), plus grammar, vocabulary, cohesion"),
+            ("Question 5 – 7",
+             "Respond to questions",
+             "all of the above, plus relevance of content, completeness of content"),
+            ("Question 8 – 10",
+             "Respond to questions using information provided",
+             "all of the above"),
+            ("Question 11",
+             "Express an opinion",
+             "all of the above"),
+        ]
+
+        for q_range, task, criteria in groups:
+            grp_widget = QWidget()
+            grp_layout = QVBoxLayout(grp_widget)
+            grp_layout.setContentsMargins(0, 2, 0, 2)
+            grp_layout.setSpacing(4)
+
+            range_lbl = QLabel(q_range)
+            range_lbl.setFont(QFont("Arial", 12, QFont.Bold))
+            range_lbl.setStyleSheet("color: #2c3e50;")
+            grp_layout.addWidget(range_lbl)
+
+            # Task bullet row
+            task_w = QWidget()
+            task_row = QHBoxLayout(task_w)
+            task_row.setContentsMargins(18, 0, 0, 0)
+            task_row.setSpacing(6)
+            b1 = QLabel("•")
+            b1.setFont(QFont("Arial", 13))
+            b1.setFixedWidth(14)
+            b1.setAlignment(Qt.AlignTop)
+            task_lbl = QLabel(f"<b>Task:</b> {task}")
+            task_lbl.setFont(QFont("Arial", 12))
+            task_lbl.setWordWrap(True)
+            task_row.addWidget(b1)
+            task_row.addWidget(task_lbl, 1)
+            grp_layout.addWidget(task_w)
+
+            # Criteria bullet row
+            crit_w = QWidget()
+            crit_row = QHBoxLayout(crit_w)
+            crit_row.setContentsMargins(18, 0, 0, 0)
+            crit_row.setSpacing(6)
+            b2 = QLabel("•")
+            b2.setFont(QFont("Arial", 13))
+            b2.setFixedWidth(14)
+            b2.setAlignment(Qt.AlignTop)
+            crit_lbl = QLabel(f"<b>Evaluation Criteria:</b> {criteria}")
+            crit_lbl.setFont(QFont("Arial", 12))
+            crit_lbl.setWordWrap(True)
+            crit_row.addWidget(b2)
+            crit_row.addWidget(crit_lbl, 1)
+            grp_layout.addWidget(crit_w)
+
+            cl.addWidget(grp_widget)
+
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.HLine)
+        sep2.setStyleSheet("color: #ddd; margin: 4px 0;")
+        cl.addWidget(sep2)
+
+        footer1 = QLabel(
+            "For each type of question, you will be given specific directions, including the "
+            "time allowed for preparation and speaking."
+        )
+        footer1.setFont(QFont("Arial", 12))
+        footer1.setWordWrap(True)
+        footer1.setStyleSheet("color: #34495e;")
+        cl.addWidget(footer1)
+
+        footer2 = QLabel(
+            "It is to your advantage to say as much as you can in the time allowed. It is also "
+            "important that you speak clearly and that you answer each question according to the directions."
+        )
+        footer2.setFont(QFont("Arial", 12))
+        footer2.setWordWrap(True)
+        footer2.setStyleSheet("color: #34495e;")
+        cl.addWidget(footer2)
+
+        cl.addStretch()
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+
+    def set_edit_mode(self, on: bool):
+        pass  # no editable fields
+
+    def refresh(self):
+        pass
+
+    def load_question(self, index: int):
+        pass  # not applicable
+
+
+# ============================================================
+# PART 1 WIDGET — Read Aloud (fully automatic exam simulation)
 # ============================================================
 class Part1Widget(QWidget):
-    TITLE = "Questions 1 - 2: Read a text aloud"
-    BODY = (
+    PREP_TIME = 45   # preparation seconds
+    READ_TIME = 30   # reading seconds
+
+    # Emitted when the auto-flow advances to a different question index
+    question_changed = pyqtSignal(int)
+
+    INTRO_BODY = (
         "In this part of the test, you will read aloud the text on the screen. "
         "You will have 45 seconds to prepare. Then you will have 45 seconds to read the text aloud."
     )
@@ -559,58 +710,76 @@ class Part1Widget(QWidget):
         super().__init__(parent)
         self.edit_mode = False
         self.current_index = 0
-        self._tts_connected = False
+        self._pending_callback = None
+
+        # Timer for the initial 2-second delay before "Begin preparing now"
+        self._init_timer = QTimer(self)
+        self._init_timer.setSingleShot(True)
+        self._init_timer.timeout.connect(self._begin_prepare)
+
+        # Timer for the 3-second delay before auto-reading instructions
+        self._intro_read_timer = QTimer(self)
+        self._intro_read_timer.setSingleShot(True)
+        self._intro_read_timer.timeout.connect(self._read_intro_aloud)
+
         self._build_ui()
-        self.load_question(0)
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(15, 12, 15, 12)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Stacked widget: page 0 = intro, page 1 = question
+        self.content_stack = QStackedWidget()
+        layout.addWidget(self.content_stack, 1)
+
+        # ── Page 0: Instruction page ──────────────────────────────────────────
+        instr_page = QWidget()
+        instr_page.setStyleSheet("background: white;")
+        ip_layout = QVBoxLayout(instr_page)
+        ip_layout.setContentsMargins(80, 60, 80, 40)
+        ip_layout.setSpacing(0)
+
+        # Centered title (not read aloud)
+        self._intro_title = QLabel("Questions 1 - 2: Read a text aloud")
+        self._intro_title.setAlignment(Qt.AlignCenter)
+        self._intro_title.setFont(QFont("Arial", 16, QFont.Bold))
+        self._intro_title.setStyleSheet("color: #2c3e50; margin-bottom: 24px;")
+        ip_layout.addWidget(self._intro_title)
+
+        # Body text (will be read aloud after 3s delay)
+        self._intro_body = QLabel(self.INTRO_BODY)
+        self._intro_body.setAlignment(Qt.AlignCenter)
+        self._intro_body.setFont(QFont("Arial", 13))
+        self._intro_body.setWordWrap(True)
+        self._intro_body.setStyleSheet("color: #34495e; line-height: 1.8;")
+        ip_layout.addWidget(self._intro_body)
+
+        ip_layout.addStretch()
+
+        # "Next page" button at bottom right
+        next_row = QHBoxLayout()
+        next_row.addStretch()
+        self.next_btn = QPushButton("下一页  ▶")
+        self.next_btn.setFixedHeight(40)
+        self.next_btn.setMinimumWidth(120)
+        self.next_btn.setStyleSheet(BTN_BLUE)
+        self.next_btn.clicked.connect(self._on_next_clicked)
+        next_row.addWidget(self.next_btn)
+        ip_layout.addLayout(next_row)
+
+        self.content_stack.addWidget(instr_page)
+
+        # ── Page 1: Question page ─────────────────────────────────────────────
+        q_page = QWidget()
+        qp_layout = QVBoxLayout(q_page)
+        qp_layout.setContentsMargins(15, 12, 15, 12)
+        qp_layout.setSpacing(10)
 
         self.q_label = QLabel("Question 1 of 11")
         self.q_label.setFont(QFont("Arial", 13, QFont.Bold))
         self.q_label.setStyleSheet("color: #2c3e50; padding: 4px 0;")
-        layout.addWidget(self.q_label)
-
-        # Stacked content: page 0 = instructions, page 1 = question text
-        self.content_stack = QStackedWidget()
-
-        # --- Page 0: Instructions ---
-        instr_page = QWidget()
-        ip_layout = QVBoxLayout(instr_page)
-        ip_layout.setContentsMargins(0, 4, 0, 4)
-
-        instr_frame = QGroupBox("Instructions")
-        instr_frame.setStyleSheet(
-            "QGroupBox { font-weight: bold; font-size: 13px; border: 2px solid #3498db; "
-            "border-radius: 8px; margin-top: 8px; background: #ebf5fb; }"
-            "QGroupBox::title { subcontrol-origin: margin; left: 10px; color: #2980b9; }"
-        )
-        if_layout = QVBoxLayout(instr_frame)
-        if_layout.setSpacing(10)
-
-        title_lbl = QLabel(self.TITLE)
-        title_lbl.setFont(QFont("Arial", 13, QFont.Bold))
-        title_lbl.setWordWrap(True)
-        title_lbl.setStyleSheet("color: #2c3e50;")
-        if_layout.addWidget(title_lbl)
-
-        body_lbl = QLabel(self.BODY)
-        body_lbl.setFont(QFont("Arial", 12))
-        body_lbl.setWordWrap(True)
-        body_lbl.setStyleSheet("color: #444; margin-top: 4px;")
-        if_layout.addWidget(body_lbl)
-        if_layout.addStretch()
-
-        ip_layout.addWidget(instr_frame)
-        ip_layout.addStretch()
-        self.content_stack.addWidget(instr_page)
-
-        # --- Page 1: Question text ---
-        q_page = QWidget()
-        qp_layout = QVBoxLayout(q_page)
-        qp_layout.setContentsMargins(0, 4, 0, 4)
+        qp_layout.addWidget(self.q_label)
 
         grp = QGroupBox("Text to Read Aloud")
         grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 12px; }")
@@ -619,52 +788,148 @@ class Part1Widget(QWidget):
         self.text_edit.setMinimumHeight(160)
         self.text_edit.setFont(QFont("Arial", 12))
         self.text_edit.setStyleSheet(STYLE_READ)
+        self.text_edit.setReadOnly(True)
         self.text_edit.textChanged.connect(self._sync_text)
         gl.addWidget(self.text_edit)
         qp_layout.addWidget(grp)
-        qp_layout.addStretch()
-        self.content_stack.addWidget(q_page)
-
-        layout.addWidget(self.content_stack)
 
         self.countdown = CountdownWidget()
         self.countdown.phase_finished.connect(self._on_phase_done)
         self.countdown.setVisible(False)
-        layout.addWidget(self.countdown)
+        qp_layout.addWidget(self.countdown)
 
-        btn_row = QHBoxLayout()
-        self.start_btn = QPushButton("▶  Start Practice")
-        self.start_btn.setStyleSheet(BTN_START)
-        self.start_btn.clicked.connect(self._start)
-        self.reset_btn = QPushButton("↺  Reset")
-        self.reset_btn.setStyleSheet(BTN_RESET)
-        self.reset_btn.clicked.connect(self._reset)
-        btn_row.addWidget(self.start_btn)
-        btn_row.addWidget(self.reset_btn)
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
-        layout.addStretch()
+        qp_layout.addStretch()
+        self.content_stack.addWidget(q_page)
+
+        # Default to intro page
+        self.content_stack.setCurrentIndex(0)
+
+    # ── Public interface ──────────────────────────────────────────────────────
+
+    def show_intro(self):
+        """Show the instruction page; auto-reads body after 3 seconds."""
+        self._cancel_all()
+        self.content_stack.setCurrentIndex(0)
+        self._intro_read_timer.start(3000)
 
     def load_question(self, index: int):
+        """Load a question and start the fully-automatic exam flow."""
+        self._cancel_all()
         self.current_index = index
         data = cfg.part1()
         self.q_label.setText(f"Question {index + 1} of 11")
         self.text_edit.blockSignals(True)
         self.text_edit.setPlainText(data[index]['text'] if index < len(data) else "")
         self.text_edit.blockSignals(False)
-        self._reset()
+        self.text_edit.setReadOnly(True)
+        self.text_edit.setStyleSheet(STYLE_READ)
+        self.countdown.reset()
+        self.countdown.setVisible(False)
+        self.content_stack.setCurrentIndex(1)
+        if not self.edit_mode:
+            self._init_timer.start(2000)
 
     def refresh(self):
-        self.load_question(self.current_index)
+        self.show_intro()
 
     def set_edit_mode(self, on: bool):
         self.edit_mode = on
-        self._apply_edit()
+        if on:
+            self._cancel_all()
+            # Show question 0 for editing without auto-flow
+            data = cfg.part1()
+            self.q_label.setText(f"Question {self.current_index + 1} of 11")
+            self.text_edit.blockSignals(True)
+            self.text_edit.setPlainText(
+                data[self.current_index]['text'] if self.current_index < len(data) else ""
+            )
+            self.text_edit.blockSignals(False)
+            self.text_edit.setReadOnly(False)
+            self.text_edit.setStyleSheet(STYLE_EDIT)
+            self.content_stack.setCurrentIndex(1)
+        else:
+            self.text_edit.setReadOnly(True)
+            self.text_edit.setStyleSheet(STYLE_READ)
 
-    def _apply_edit(self):
-        ro = not self.edit_mode or self.countdown.is_running()
-        self.text_edit.setReadOnly(ro)
-        self.text_edit.setStyleSheet(STYLE_READ if ro else STYLE_EDIT)
+    def is_active(self) -> bool:
+        """Returns True if the automatic exam flow is running."""
+        return (
+            self._init_timer.isActive()
+            or self._intro_read_timer.isActive()
+            or self._pending_callback is not None
+            or self.countdown.is_running()
+        )
+
+    # ── Internal flow ─────────────────────────────────────────────────────────
+
+    def _cancel_all(self):
+        """Stop all timers, TTS, and countdown."""
+        self._init_timer.stop()
+        self._intro_read_timer.stop()
+        self._pending_callback = None
+        try:
+            tts._worker.finished.disconnect(self._on_tts_done)
+        except Exception:
+            pass
+        tts.stop()
+        self.countdown.stop()
+        self.countdown.reset()
+        self.countdown.setVisible(False)
+
+    def _on_next_clicked(self):
+        """User clicked the 'Next page' button on the intro page."""
+        self._cancel_all()
+        self.load_question(0)
+
+    def _read_intro_aloud(self):
+        """Called 3s after showing intro — reads the body text (not the title)."""
+        tts.speak(self.INTRO_BODY)
+
+    def _tts_then(self, text: str, callback):
+        """Speak text and call callback when TTS finishes."""
+        self._pending_callback = callback
+        if TTS_AVAILABLE:
+            tts._worker.finished.connect(self._on_tts_done)
+        tts.speak(text)
+        if not TTS_AVAILABLE:
+            # No TTS engine — use a short timer as fallback
+            QTimer.singleShot(1500, self._on_tts_done)
+
+    def _on_tts_done(self):
+        try:
+            tts._worker.finished.disconnect(self._on_tts_done)
+        except Exception:
+            pass
+        if self._pending_callback:
+            cb = self._pending_callback
+            self._pending_callback = None
+            cb()
+
+    def _begin_prepare(self):
+        """Called 2s after entering question page. Speaks 'Begin preparing now'."""
+        self.countdown.setVisible(True)
+        self._tts_then("Begin preparing now", self._start_prep_countdown)
+
+    def _start_prep_countdown(self):
+        self.countdown.start(Phase.PREPARATION, self.PREP_TIME)
+
+    def _on_phase_done(self, phase):
+        if phase == Phase.PREPARATION:
+            self._tts_then("Begin reading now", self._start_read_countdown)
+        elif phase == Phase.READING:
+            self._on_question_complete()
+
+    def _start_read_countdown(self):
+        self.countdown.start(Phase.READING, self.READ_TIME)
+
+    def _on_question_complete(self):
+        if self.current_index == 0:
+            # Auto-advance to Question 2
+            self.load_question(1)
+            self.question_changed.emit(1)
+        else:
+            # Question 2 finished — mark done
+            self.countdown.mark_done()
 
     def _sync_text(self):
         if not self.edit_mode:
@@ -672,61 +937,6 @@ class Part1Widget(QWidget):
         data = cfg.part1()
         if self.current_index < len(data):
             data[self.current_index]['text'] = self.text_edit.toPlainText()
-
-    def _start(self):
-        if self.countdown.is_running():
-            return
-        self.start_btn.setEnabled(False)
-        self.text_edit.setReadOnly(True)
-        self.text_edit.setStyleSheet(STYLE_READ)
-
-        # Show instructions page and read instructions aloud
-        self.content_stack.setCurrentIndex(0)
-        self.countdown.setVisible(False)
-        tts.speak(self.BODY)
-
-        if tts.available:
-            self._tts_connected = True
-            tts._worker.finished.connect(self._on_instructions_read)
-        else:
-            # No TTS — transition after brief delay
-            QTimer.singleShot(300, self._on_instructions_read)
-
-    def _on_instructions_read(self):
-        if self._tts_connected:
-            try:
-                tts._worker.finished.disconnect(self._on_instructions_read)
-            except Exception:
-                pass
-            self._tts_connected = False
-        # Switch to question page, show countdown, start preparation
-        self.content_stack.setCurrentIndex(1)
-        self.countdown.setVisible(True)
-        tts.speak("Begin preparing now")
-        self.countdown.start(Phase.PREPARATION, 45)
-
-    def _on_phase_done(self, phase):
-        if phase == Phase.PREPARATION:
-            tts.speak("Begin reading now")
-            self.countdown.start(Phase.SPEAKING, 45, hms=True)
-        elif phase == Phase.SPEAKING:
-            self.countdown.mark_done()
-            self.start_btn.setEnabled(True)
-            self._apply_edit()
-
-    def _reset(self):
-        if self._tts_connected:
-            try:
-                tts._worker.finished.disconnect(self._on_instructions_read)
-            except Exception:
-                pass
-            self._tts_connected = False
-        tts.stop()
-        self.countdown.reset()
-        self.countdown.setVisible(False)
-        self.content_stack.setCurrentIndex(1)
-        self.start_btn.setEnabled(True)
-        self._apply_edit()
 
 
 # ============================================================
@@ -1059,8 +1269,8 @@ class Part3Widget(QWidget):
 class P4State(Enum):
     IDLE = auto()
     READING = auto()
-    Q_PREP = auto()   # 3s prep before any question
-    Q_SPEAK = auto()  # speaking time for current question
+    Q_PREP = auto()
+    Q_SPEAK = auto()
     DONE = auto()
 
 
@@ -1079,7 +1289,7 @@ class Part4Widget(QWidget):
         self.edit_mode = False
         self.current_index = 0
         self._state = P4State.IDLE
-        self._q_idx = 0   # 0=Q8, 1=Q9, 2=Q10
+        self._q_idx = 0
         self._build_ui()
         self.load_question(0)
 
@@ -1101,7 +1311,6 @@ class Part4Widget(QWidget):
         self.status_label.setStyleSheet("color: #7f8c8d; padding: 2px 0;")
         layout.addWidget(self.status_label)
 
-        # Tabs: Practice | Edit Questions
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, 1)
 
@@ -1165,7 +1374,6 @@ class Part4Widget(QWidget):
             qe.setMaximumHeight(70)
             qe.setFont(QFont("Arial", 10))
             qe.setStyleSheet(STYLE_READ)
-            idx = i
 
             def make_q_sync(ix):
                 def f():
@@ -1282,7 +1490,7 @@ class Part4Widget(QWidget):
         self.cur_q_label.setText(f"{name}:  {q_text}")
 
         tts.speak(q_text)
-        if self._q_idx == 2:  # Q10 is read twice
+        if self._q_idx == 2:
             tts.speak(q_text)
         tts.speak("Begin preparing now")
         self._state = P4State.Q_PREP
@@ -1422,14 +1630,18 @@ class Part5Widget(QWidget):
 # NAVIGATION TREE
 # ============================================================
 class NavTree(QTreeWidget):
-    question_selected = pyqtSignal(int, int)  # part (1–5), index
+    question_selected = pyqtSignal(int, int)  # part (0–5), index
 
     _PARTS = [
-        ("PART 1  Read Aloud",          1, 2,  ["Question 1", "Question 2"]),
-        ("PART 2  Describe Picture",     2, 2,  ["Question 3", "Question 4"]),
-        ("PART 3  Respond to Questions", 3, 3,  ["Question 5", "Question 6", "Question 7"]),
-        ("PART 4  Info Questions",       4, 1,  ["Questions 8 – 10"]),
-        ("PART 5  Express Opinion",      5, 1,  ["Question 11"]),
+        # (label, part_num, q_count, child_labels)
+        # part_num=0 → Directions (top-level item navigable directly)
+        # part_num=1 → PART1 parent navigates to intro (index=-1)
+        ("TOEIC Speaking Test Directions", 0, 0, []),
+        ("PART1: Read a text aloud",       1, 2, ["Question 1", "Question 2"]),
+        ("PART 2  Describe Picture",        2, 2, ["Question 3", "Question 4"]),
+        ("PART 3  Respond to Questions",    3, 3, ["Question 5", "Question 6", "Question 7"]),
+        ("PART 4  Info Questions",          4, 1, ["Questions 8 – 10"]),
+        ("PART 5  Express Opinion",         5, 1, ["Question 11"]),
     ]
 
     def __init__(self, parent=None):
@@ -1452,31 +1664,46 @@ class NavTree(QTreeWidget):
         self.clear()
         for label, part_num, count, q_labels in self._PARTS:
             part_item = QTreeWidgetItem(self, [label])
-            part_item.setData(0, Qt.UserRole, None)
             part_item.setFont(0, QFont("Arial", 10, QFont.Bold))
             part_item.setExpanded(True)
+
+            if part_num == 0:
+                # Directions — the parent itself is the navigation target
+                part_item.setData(0, Qt.UserRole, (0, 0))
+            elif part_num == 1:
+                # PART1 parent navigates to intro page (index = -1)
+                part_item.setData(0, Qt.UserRole, (1, -1))
+            else:
+                part_item.setData(0, Qt.UserRole, None)
+
             for j, ql in enumerate(q_labels):
                 qi = QTreeWidgetItem(part_item, [f"  {ql}"])
                 qi.setData(0, Qt.UserRole, (part_num, j))
+
         self.blockSignals(False)
 
     def _on_click(self, item: QTreeWidgetItem, _col: int):
         data = item.data(0, Qt.UserRole)
-        if data:
+        if data is not None:
             self.question_selected.emit(data[0], data[1])
 
     def select(self, part: int, index: int):
-        """Visually select the tree item for (part, index)."""
+        """Visually highlight the tree item for (part, index)."""
+        target = (part, index)
         self.blockSignals(True)
         self.clearSelection()
         for i in range(self.topLevelItemCount()):
             top = self.topLevelItem(i)
+            if top.data(0, Qt.UserRole) == target:
+                top.setSelected(True)
+                self.scrollToItem(top)
+                break
             for j in range(top.childCount()):
                 child = top.child(j)
-                data = child.data(0, Qt.UserRole)
-                if data and data == (part, index):
+                if child.data(0, Qt.UserRole) == target:
                     child.setSelected(True)
                     self.scrollToItem(child)
+                    break
         self.blockSignals(False)
 
 
@@ -1484,17 +1711,17 @@ class NavTree(QTreeWidget):
 # MAIN WINDOW
 # ============================================================
 class MainWindow(QMainWindow):
-    # Map (part, index) → global question number(s) for display
-    _COUNTS = {1: 2, 2: 2, 3: 3, 4: 1, 5: 1}
+    # question counts per part (0 = Directions)
+    _COUNTS = {0: 1, 1: 2, 2: 2, 3: 3, 4: 1, 5: 1}
     _TOTAL = 11
 
     def __init__(self):
         super().__init__()
         self.edit_mode = False
-        self._part = 1
+        self._part = 0
         self._idx = 0
         self._setup_ui()
-        self._go_to(1, 0)
+        self._go_to(0, 0)  # Start at Directions
 
     def _setup_ui(self):
         self.setWindowTitle("TOEIC Speaking Practice")
@@ -1537,7 +1764,6 @@ class MainWindow(QMainWindow):
 
         self._build_toolbar()
 
-        # Splitter: left nav | center stack | right sidebar
         splitter = QSplitter(Qt.Horizontal)
         splitter.setHandleWidth(2)
 
@@ -1546,9 +1772,20 @@ class MainWindow(QMainWindow):
         self.nav.question_selected.connect(self._go_to)
         splitter.addWidget(self.nav)
 
-        # Center stacked widget wrapped in scroll areas
+        # Center stacked widget
         self.stack = QStackedWidget()
         self.part_widgets: Dict[int, QWidget] = {}
+
+        # Index 0: Directions
+        dirs_widget = DirectionsWidget()
+        dirs_sa = QScrollArea()
+        dirs_sa.setWidget(dirs_widget)
+        dirs_sa.setWidgetResizable(True)
+        dirs_sa.setFrameShape(QFrame.NoFrame)
+        self.part_widgets[0] = dirs_widget
+        self.stack.addWidget(dirs_sa)  # stack index 0
+
+        # Indices 1–5: Part widgets
         for part_num, WidgetClass in [
             (1, Part1Widget), (2, Part2Widget), (3, Part3Widget),
             (4, Part4Widget), (5, Part5Widget)
@@ -1559,10 +1796,14 @@ class MainWindow(QMainWindow):
             sa.setWidgetResizable(True)
             sa.setFrameShape(QFrame.NoFrame)
             self.part_widgets[part_num] = w
-            self.stack.addWidget(sa)
+            self.stack.addWidget(sa)  # stack index = part_num
+
+        # Connect Part1 auto-advance signal
+        self.part_widgets[1].question_changed.connect(self._on_part1_question_changed)
+
         splitter.addWidget(self.stack)
 
-        # Right sidebar (reserved)
+        # Right sidebar (reserved for recording)
         right = QFrame()
         right.setFixedWidth(155)
         right.setStyleSheet("background: white; border-left: 1px solid #e0e0e0;")
@@ -1678,13 +1919,24 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.mark_btn)
         layout.addWidget(quit_btn)
 
+    # ── Navigation ────────────────────────────────────────────────────────────
+
     def _current_widget(self) -> Optional[QWidget]:
         return self.part_widgets.get(self._part)
 
     def _check_timer_and_proceed(self) -> bool:
-        """Return True if OK to navigate away."""
+        """Return True if OK to navigate away from the current view."""
         w = self._current_widget()
-        if w and hasattr(w, 'countdown') and w.countdown.is_running():
+        if w is None:
+            return True
+
+        running = False
+        if hasattr(w, 'is_active'):
+            running = w.is_active()
+        elif hasattr(w, 'countdown'):
+            running = w.countdown.is_running()
+
+        if running:
             reply = QMessageBox.question(
                 self, "Timer Running",
                 "A timer is currently running.\nStop it and navigate away?",
@@ -1692,33 +1944,69 @@ class MainWindow(QMainWindow):
             )
             if reply == QMessageBox.No:
                 return False
-            w.countdown.stop()
+            if hasattr(w, '_cancel_all'):
+                w._cancel_all()
+            elif hasattr(w, 'countdown'):
+                w.countdown.stop()
         return True
 
     def _go_to(self, part: int, index: int):
         if not self._check_timer_and_proceed():
             return
+
+        # Cancel Part1 auto-flow if navigating away from Part1
+        if self._part == 1 and part != 1:
+            p1w = self.part_widgets.get(1)
+            if p1w and hasattr(p1w, '_cancel_all'):
+                p1w._cancel_all()
+
         self._part = part
         self._idx = index
-        self.stack.setCurrentIndex(part - 1)
-        w = self.part_widgets.get(part)
-        if w:
-            w.load_question(index)
+
+        if part == 0:
+            self.stack.setCurrentIndex(0)
+        else:
+            self.stack.setCurrentIndex(part)  # part 1→index 1, part 2→index 2, etc.
+            w = self.part_widgets.get(part)
+            if w:
+                if part == 1 and index == -1:
+                    w.show_intro()
+                else:
+                    w.load_question(index)
+
         self.nav.select(part, index)
         self._update_nav()
 
+    def _on_part1_question_changed(self, idx: int):
+        """Called when Part1 auto-advances to a new question."""
+        self._idx = idx
+        self.nav.select(1, idx)
+        self._update_nav()
+
     def _update_nav(self):
-        count = self._COUNTS.get(self._part, 1)
-        self.prev_btn.setEnabled(self._idx > 0 or self._part > 1)
-        self.next_btn.setEnabled(self._idx < count - 1 or self._part < 5)
+        p, i = self._part, self._idx
+
+        # Prev button: disabled only at the very start (Directions)
+        can_prev = not (p == 0)
+        # Next button: disabled only at the very end (Part5 last question)
+        last_part = 5
+        last_idx = self._COUNTS.get(last_part, 1) - 1
+        can_next = not (p == last_part and i >= last_idx)
+
+        self.prev_btn.setEnabled(can_prev)
+        self.next_btn.setEnabled(can_next)
 
         # Position label
         q_start = {1: 1, 2: 3, 3: 5, 4: 8, 5: 11}
-        qs = q_start.get(self._part, 1) + self._idx
-        if self._part == 4:
+        if p == 0:
+            self.pos_label.setText("TOEIC® Speaking Test Directions")
+        elif p == 1 and i == -1:
+            self.pos_label.setText("PART 1  •  Instructions")
+        elif p == 4:
             self.pos_label.setText("PART 4  •  Questions 8 – 10 of 11")
         else:
-            self.pos_label.setText(f"PART {self._part}  •  Question {qs} of {self._TOTAL}")
+            qs = q_start.get(p, 1) + i
+            self.pos_label.setText(f"PART {p}  •  Question {qs} of {self._TOTAL}")
 
         # Mark button state
         marked = self._is_marked()
@@ -1732,23 +2020,39 @@ class MainWindow(QMainWindow):
     def _go_prev(self):
         if not self._check_timer_and_proceed():
             return
-        if self._idx > 0:
-            self._go_to(self._part, self._idx - 1)
-        elif self._part > 1:
-            new_p = self._part - 1
+        p, i = self._part, self._idx
+        if p == 0:
+            return  # already at start
+        if p == 1 and i <= -1:
+            self._go_to(0, 0)
+        elif p == 1 and i == 0:
+            self._go_to(1, -1)
+        elif i > 0:
+            self._go_to(p, i - 1)
+        elif p > 1:
+            new_p = p - 1
             self._go_to(new_p, self._COUNTS[new_p] - 1)
 
     def _go_next(self):
         if not self._check_timer_and_proceed():
             return
-        count = self._COUNTS.get(self._part, 1)
-        if self._idx < count - 1:
-            self._go_to(self._part, self._idx + 1)
-        elif self._part < 5:
-            self._go_to(self._part + 1, 0)
+        p, i = self._part, self._idx
+        if p == 0:
+            self._go_to(1, -1)
+            return
+        if p == 1 and i == -1:
+            self._go_to(1, 0)
+            return
+        count = self._COUNTS.get(p, 1)
+        if i < count - 1:
+            self._go_to(p, i + 1)
+        elif p < 5:
+            self._go_to(p + 1, 0)
 
     def _is_marked(self) -> bool:
         p, i = self._part, self._idx
+        if p == 0 or i < 0:
+            return False
         if p == 2:
             data = cfg.part2()
             return i < len(data) and data[i].get('marked', False)
@@ -1762,6 +2066,8 @@ class MainWindow(QMainWindow):
 
     def _toggle_mark(self):
         p, i = self._part, self._idx
+        if p == 0 or i < 0:
+            return
         if p == 2:
             data = cfg.part2()
             if i < len(data):
@@ -1795,7 +2101,6 @@ class MainWindow(QMainWindow):
         for w in self.part_widgets.values():
             w.set_edit_mode(on)
 
-        # Visual indicator
         self.edit_cb.setStyleSheet(
             "color: #f39c12; font-weight: bold; font-size: 13px;" if on
             else "color: #ecf0f1; font-size: 13px;"
@@ -1836,7 +2141,6 @@ class MainWindow(QMainWindow):
 # ENTRY POINT
 # ============================================================
 def main():
-    # Change working directory to the script's location so config/images are found
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     app = QApplication(sys.argv)
