@@ -22,52 +22,65 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install PyQt5 pyttsx3 pyinstaller
+          pip install PyQt5 pyttsx3 pyaudio pyinstaller
 
       - name: Build EXE with PyInstaller
         working-directory: toeic_speaking
         run: |
           pyinstaller --onefile --windowed `
-            --name "TOEIC_Speaking_Practice" `
+            --name "TOEIC_Speaking_Practice_v1.1" `
             --add-data "images;images" `
             --add-data "audio;audio" `
+            --hidden-import pyaudio `
             main.py
 
       - name: Create release package
         working-directory: toeic_speaking
         run: |
-          New-Item -ItemType Directory -Force dist\TOEIC_Speaking_Practice_Package
-          Copy-Item dist\TOEIC_Speaking_Practice.exe dist\TOEIC_Speaking_Practice_Package\
-          New-Item -ItemType Directory -Force dist\TOEIC_Speaking_Practice_Package\images
-          New-Item -ItemType Directory -Force dist\TOEIC_Speaking_Practice_Package\audio
-          Copy-Item -Path images\* -Destination dist\TOEIC_Speaking_Practice_Package\images\ -ErrorAction SilentlyContinue
-          Compress-Archive -Path dist\TOEIC_Speaking_Practice_Package\* `
-            -DestinationPath dist\TOEIC_Speaking_Practice_Windows.zip
+          New-Item -ItemType Directory -Force dist\TOEIC_Speaking_Practice_v1.1_Package
+          Copy-Item dist\TOEIC_Speaking_Practice_v1.1.exe dist\TOEIC_Speaking_Practice_v1.1_Package\
+          New-Item -ItemType Directory -Force dist\TOEIC_Speaking_Practice_v1.1_Package\images
+          New-Item -ItemType Directory -Force dist\TOEIC_Speaking_Practice_v1.1_Package\audio
+          New-Item -ItemType Directory -Force dist\TOEIC_Speaking_Practice_v1.1_Package\recordings
+          Copy-Item -Path images\* -Destination dist\TOEIC_Speaking_Practice_v1.1_Package\images\ -ErrorAction SilentlyContinue
+          Compress-Archive -Path dist\TOEIC_Speaking_Practice_v1.1_Package\* `
+            -DestinationPath dist\TOEIC_Speaking_Practice_v1.1_Windows.zip
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TOEIC_Speaking_Practice_Windows
-          path: toeic_speaking/dist/TOEIC_Speaking_Practice_Windows.zip
+          name: TOEIC_Speaking_Practice_v1.1_Windows
+          path: toeic_speaking/dist/TOEIC_Speaking_Practice_v1.1_Windows.zip
           retention-days: 30
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: "TOEIC Speaking Practice v${{ github.run_number }}"
+          tag_name: v1.1.${{ github.run_number }}
+          name: "TOEIC Speaking Practice v1.1.${{ github.run_number }}"
           body: |
-            ## TOEIC 口语练习软件 Windows 版
+            ## TOEIC 口语练习软件 v1.1 Windows 版
+
+            ### 新增功能
+            - Directions 页面改为表格布局，一目了然
+            - PART1 引导页字体大幅提升（22pt），排版更美观
+            - Question 1/2 正文字体升级（17pt Georgia），更易阅读
+            - 底部中央新增 🎙 录音按钮，可录制并保存 WAV 文件至 recordings/ 目录
 
             ### 下载与使用
-            1. 下载 `TOEIC_Speaking_Practice_Windows.zip`
-            2. 解压到任意文件夹
-            3. 双击运行 `TOEIC_Speaking_Practice.exe`
+            1. 下载 `TOEIC_Speaking_Practice_v1.1_Windows.zip`
+            2. 解压到任意文件夹（保留 images/ audio/ recordings/ 子目录）
+            3. 双击运行 `TOEIC_Speaking_Practice_v1.1.exe`
+
+            ### 录音功能说明
+            - 底部中央红色 🎙 按钮：点击开始录音，再次点击停止并保存
+            - 录音文件保存至 `recordings/` 目录，文件名含题目编号和时间戳
+            - 需要麦克风硬件支持（自动检测，无麦克风时按钮置灰）
 
             ### 注意
             - 首次运行会自动创建 `toeic_speaking_config.json` 配置文件
             - 如需使用语音功能，确保 Windows 已安装英语 TTS 语音包
-          files: toeic_speaking/dist/TOEIC_Speaking_Practice_Windows.zip
+          files: toeic_speaking/dist/TOEIC_Speaking_Practice_v1.1_Windows.zip
           draft: false
           prerelease: false
         env:

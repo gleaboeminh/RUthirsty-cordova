@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import threading
+import datetime
 from enum import Enum, auto
 from typing import List, Dict, Any, Optional
 
@@ -19,7 +20,8 @@ try:
         QLabel, QPushButton, QTextEdit, QGroupBox, QStackedWidget,
         QTreeWidget, QTreeWidgetItem, QToolBar, QCheckBox, QFileDialog,
         QMessageBox, QFrame, QScrollArea, QSizePolicy, QLineEdit,
-        QSplitter, QTabWidget, QSpacerItem, QAbstractItemView
+        QSplitter, QTabWidget, QSpacerItem, QAbstractItemView,
+        QTableWidget, QTableWidgetItem, QHeaderView
     )
     from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize, QUrl
     from PyQt5.QtGui import QFont, QPixmap, QPalette, QColor, QIcon
@@ -31,7 +33,8 @@ except ImportError:
             QLabel, QPushButton, QTextEdit, QGroupBox, QStackedWidget,
             QTreeWidget, QTreeWidgetItem, QToolBar, QCheckBox, QFileDialog,
             QMessageBox, QFrame, QScrollArea, QSizePolicy, QLineEdit,
-            QSplitter, QTabWidget, QSpacerItem, QAbstractItemView
+            QSplitter, QTabWidget, QSpacerItem, QAbstractItemView,
+            QTableWidget, QTableWidgetItem, QHeaderView
         )
         from PySide6.QtCore import Qt, QTimer, QThread, Signal as pyqtSignal, QSize, QUrl
         from PySide6.QtGui import QFont, QPixmap, QPalette, QColor, QIcon
@@ -45,6 +48,13 @@ try:
     TTS_AVAILABLE = True
 except ImportError:
     TTS_AVAILABLE = False
+
+try:
+    import pyaudio
+    import wave
+    PYAUDIO_AVAILABLE = True
+except ImportError:
+    PYAUDIO_AVAILABLE = False
 
 # ============================================================
 # DEFAULT CONFIGURATION
@@ -264,8 +274,62 @@ class TTSManager:
 tts = TTSManager()
 
 # ============================================================
-# CONFIG MANAGER
+# RECORD THREAD
 # ============================================================
+class RecordThread(QThread):
+    """Background thread: records microphone input via pyaudio and saves as WAV."""
+    record_started  = pyqtSignal()
+    record_finished = pyqtSignal(str)   # emits saved filepath
+
+    CHUNK    = 1024
+    CHANNELS = 1
+    RATE     = 44100
+
+    def __init__(self, filepath: str, parent=None):
+        super().__init__(parent)
+        self._filepath   = filepath
+        self._stop_flag  = False
+
+    def request_stop(self):
+        self._stop_flag = True
+
+    def run(self):
+        if not PYAUDIO_AVAILABLE:
+            return
+        try:
+            p           = pyaudio.PyAudio()
+            sample_size = p.get_sample_size(pyaudio.paInt16)
+            stream      = p.open(
+                format=pyaudio.paInt16,
+                channels=self.CHANNELS,
+                rate=self.RATE,
+                input=True,
+                frames_per_buffer=self.CHUNK,
+            )
+            frames = []
+            self.record_started.emit()
+            while not self._stop_flag:
+                data = stream.read(self.CHUNK, exception_on_overflow=False)
+                frames.append(data)
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
+
+            dirpath = os.path.dirname(self._filepath)
+            if dirpath:
+                os.makedirs(dirpath, exist_ok=True)
+            wf = wave.open(self._filepath, 'wb')
+            wf.setnchannels(self.CHANNELS)
+            wf.setsampwidth(sample_size)
+            wf.setframerate(self.RATE)
+            wf.writeframes(b''.join(frames))
+            wf.close()
+            self.record_finished.emit(self._filepath)
+        except Exception as e:
+            print(f"[Record] Error: {e}")
+            self.record_finished.emit("")
+
+
 CONFIG_FILE = "toeic_speaking_config.json"
 
 
@@ -567,119 +631,142 @@ class DirectionsWidget(QWidget):
         content.setStyleSheet("background: white;")
         cl = QVBoxLayout(content)
         cl.setContentsMargins(56, 40, 56, 40)
-        cl.setSpacing(18)
+        cl.setSpacing(20)
 
-        # Title — at least 3pt larger than body (body=12pt, title=18pt), bold
+        # ── Title ────────────────────────────────────────────────────────────
         title = QLabel("TOEIC® Speaking Test Directions")
-        title.setFont(QFont("Arial", 18, QFont.Bold))
-        title.setStyleSheet("color: #1a2a3a;")
+        title.setFont(QFont("Arial", 22, QFont.Bold))
+        title.setStyleSheet(
+            "color: #1a2a3a; padding-bottom: 10px;"
+            "border-bottom: 3px solid #3498db;"
+        )
         cl.addWidget(title)
 
-        # Intro paragraph
+        # ── Intro paragraph ───────────────────────────────────────────────────
         intro = QLabel(
             "This is the TOEIC® Speaking test. This test includes 11 questions that measure "
             "different aspects of your speaking ability. The test lasts approximately 20 minutes."
         )
-        intro.setFont(QFont("Arial", 12))
+        intro.setFont(QFont("Arial", 13))
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #34495e;")
+        intro.setStyleSheet("color: #34495e; line-height: 1.6;")
         cl.addWidget(intro)
 
-        sep1 = QFrame()
-        sep1.setFrameShape(QFrame.HLine)
-        sep1.setStyleSheet("color: #ddd; margin: 4px 0;")
-        cl.addWidget(sep1)
+        # ── Section heading ───────────────────────────────────────────────────
+        sec_lbl = QLabel("Question Overview")
+        sec_lbl.setFont(QFont("Arial", 15, QFont.Bold))
+        sec_lbl.setStyleSheet("color: #2c3e50; margin-top: 4px;")
+        cl.addWidget(sec_lbl)
 
-        # Question groups
-        groups = [
-            ("Question 1 – 2",
+        # ── Table ─────────────────────────────────────────────────────────────
+        headers = ["Questions", "Task", "Evaluation Criteria", "Prep Time", "Speaking Time"]
+        table_rows = [
+            ("Q 1 – 2",
              "Read a text aloud",
-             "pronunciation, intonation and stress"),
-            ("Question 3 – 4",
+             "Pronunciation, intonation and stress",
+             "45 sec", "45 sec"),
+            ("Q 3 – 4",
              "Describe a picture",
-             "all of the above (pronunciation, intonation and stress), plus grammar, vocabulary, cohesion"),
-            ("Question 5 – 7",
+             "All above + grammar, vocabulary, cohesion",
+             "45 sec", "30 sec"),
+            ("Q 5 – 6",
              "Respond to questions",
-             "all of the above, plus relevance of content, completeness of content"),
-            ("Question 8 – 10",
-             "Respond to questions using information provided",
-             "all of the above"),
-            ("Question 11",
+             "All above + relevance and completeness of content",
+             "3 sec", "15 sec"),
+            ("Q 7",
+             "Respond to questions",
+             "All above + relevance and completeness of content",
+             "3 sec", "30 sec"),
+            ("Q 8 – 10",
+             "Respond using information provided",
+             "All above",
+             "45 sec (reading)", "15 / 15 / 30 sec"),
+            ("Q 11",
              "Express an opinion",
-             "all of the above"),
+             "All above",
+             "45 sec", "60 sec"),
         ]
 
-        for q_range, task, criteria in groups:
-            grp_widget = QWidget()
-            grp_layout = QVBoxLayout(grp_widget)
-            grp_layout.setContentsMargins(0, 2, 0, 2)
-            grp_layout.setSpacing(4)
+        table = QTableWidget(len(table_rows), len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.NoSelection)
+        table.setShowGrid(True)
+        table.setWordWrap(True)
+        table.setAlternatingRowColors(True)
+        table.horizontalHeader().setStretchLastSection(True)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        table.setStyleSheet("""
+            QTableWidget {
+                border: 1px solid #d5d8dc;
+                border-radius: 6px;
+                gridline-color: #d5d8dc;
+                font-size: 12px;
+                background: white;
+            }
+            QHeaderView::section {
+                background: #2c3e50;
+                color: white;
+                font-weight: bold;
+                font-size: 12px;
+                padding: 8px 6px;
+                border: none;
+                border-right: 1px solid #3d5166;
+            }
+            QTableWidget::item {
+                padding: 8px 8px;
+            }
+            QTableWidget::item:alternate {
+                background: #f0f4f8;
+            }
+        """)
 
-            range_lbl = QLabel(q_range)
-            range_lbl.setFont(QFont("Arial", 12, QFont.Bold))
-            range_lbl.setStyleSheet("color: #2c3e50;")
-            grp_layout.addWidget(range_lbl)
+        col_widths = [90, 190, 0, 110, 115]  # 0 = stretch (col 2)
+        for col, w in enumerate(col_widths):
+            if w:
+                table.setColumnWidth(col, w)
 
-            # Task bullet row
-            task_w = QWidget()
-            task_row = QHBoxLayout(task_w)
-            task_row.setContentsMargins(18, 0, 0, 0)
-            task_row.setSpacing(6)
-            b1 = QLabel("•")
-            b1.setFont(QFont("Arial", 13))
-            b1.setFixedWidth(14)
-            b1.setAlignment(Qt.AlignTop)
-            task_lbl = QLabel(f"<b>Task:</b> {task}")
-            task_lbl.setFont(QFont("Arial", 12))
-            task_lbl.setWordWrap(True)
-            task_row.addWidget(b1)
-            task_row.addWidget(task_lbl, 1)
-            grp_layout.addWidget(task_w)
+        row_colors = [
+            QColor("#ebf5fb"), QColor("#eaf4fb"),
+            QColor("#fdfefe"), QColor("#fdfefe"),
+            QColor("#fdfefe"), QColor("#fdfefe"),
+        ]
 
-            # Criteria bullet row
-            crit_w = QWidget()
-            crit_row = QHBoxLayout(crit_w)
-            crit_row.setContentsMargins(18, 0, 0, 0)
-            crit_row.setSpacing(6)
-            b2 = QLabel("•")
-            b2.setFont(QFont("Arial", 13))
-            b2.setFixedWidth(14)
-            b2.setAlignment(Qt.AlignTop)
-            crit_lbl = QLabel(f"<b>Evaluation Criteria:</b> {criteria}")
-            crit_lbl.setFont(QFont("Arial", 12))
-            crit_lbl.setWordWrap(True)
-            crit_row.addWidget(b2)
-            crit_row.addWidget(crit_lbl, 1)
-            grp_layout.addWidget(crit_w)
+        for row, (q, task, criteria, prep, speaking) in enumerate(table_rows):
+            cells = [q, task, criteria, prep, speaking]
+            for col, text in enumerate(cells):
+                item = QTableWidgetItem(text)
+                item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+                if col == 0:
+                    item.setFont(QFont("Arial", 12, QFont.Bold))
+                    item.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter)
+                    item.setBackground(QColor("#d6eaf8"))
+                else:
+                    item.setFont(QFont("Arial", 12))
+                table.setItem(row, col, item)
 
-            cl.addWidget(grp_widget)
+        table.resizeRowsToContents()
+        table.setMinimumHeight(240)
+        cl.addWidget(table)
 
-        sep2 = QFrame()
-        sep2.setFrameShape(QFrame.HLine)
-        sep2.setStyleSheet("color: #ddd; margin: 4px 0;")
-        cl.addWidget(sep2)
-
-        footer1 = QLabel(
+        # ── Footer notes ──────────────────────────────────────────────────────
+        for text in [
             "For each type of question, you will be given specific directions, including the "
-            "time allowed for preparation and speaking."
-        )
-        footer1.setFont(QFont("Arial", 12))
-        footer1.setWordWrap(True)
-        footer1.setStyleSheet("color: #34495e;")
-        cl.addWidget(footer1)
-
-        footer2 = QLabel(
+            "time allowed for preparation and speaking.",
             "It is to your advantage to say as much as you can in the time allowed. It is also "
-            "important that you speak clearly and that you answer each question according to the directions."
-        )
-        footer2.setFont(QFont("Arial", 12))
-        footer2.setWordWrap(True)
-        footer2.setStyleSheet("color: #34495e;")
-        cl.addWidget(footer2)
+            "important that you speak clearly and that you answer each question according to the directions.",
+        ]:
+            lbl = QLabel(text)
+            lbl.setFont(QFont("Arial", 12))
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet("color: #34495e;")
+            cl.addWidget(lbl)
 
         cl.addStretch()
         scroll.setWidget(content)
         outer.addWidget(scroll)
+
 
     def set_edit_mode(self, on: bool):
         pass  # no editable fields
@@ -737,25 +824,53 @@ class Part1Widget(QWidget):
         instr_page = QWidget()
         instr_page.setStyleSheet("background: white;")
         ip_layout = QVBoxLayout(instr_page)
-        ip_layout.setContentsMargins(80, 60, 80, 40)
+        ip_layout.setContentsMargins(100, 0, 100, 40)
         ip_layout.setSpacing(0)
 
-        # Centered title (not read aloud)
-        self._intro_title = QLabel("Questions 1 - 2: Read a text aloud")
+        ip_layout.addStretch(2)
+
+        # Part badge
+        part_badge = QLabel("PART 1  ·  Questions 1 – 2")
+        part_badge.setAlignment(Qt.AlignCenter)
+        part_badge.setFont(QFont("Arial", 12, QFont.Bold))
+        part_badge.setStyleSheet(
+            "color: white; background: #2980b9; border-radius: 16px; "
+            "padding: 4px 22px; letter-spacing: 1px;"
+        )
+        part_badge.setFixedHeight(32)
+        ip_layout.addWidget(part_badge, 0, Qt.AlignCenter)
+
+        ip_layout.addSpacing(24)
+
+        # Centered title
+        self._intro_title = QLabel("Read a Text Aloud")
         self._intro_title.setAlignment(Qt.AlignCenter)
-        self._intro_title.setFont(QFont("Arial", 16, QFont.Bold))
-        self._intro_title.setStyleSheet("color: #2c3e50; margin-bottom: 24px;")
+        self._intro_title.setFont(QFont("Arial", 26, QFont.Bold))
+        self._intro_title.setStyleSheet("color: #1a2a3a;")
         ip_layout.addWidget(self._intro_title)
+
+        ip_layout.addSpacing(16)
+
+        # Thin separator line
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color: #3498db; background: #3498db; max-height: 2px; margin: 0 80px;")
+        sep.setFixedHeight(2)
+        ip_layout.addWidget(sep)
+
+        ip_layout.addSpacing(24)
 
         # Body text (will be read aloud after 3s delay)
         self._intro_body = QLabel(self.INTRO_BODY)
         self._intro_body.setAlignment(Qt.AlignCenter)
-        self._intro_body.setFont(QFont("Arial", 13))
+        self._intro_body.setFont(QFont("Arial", 15))
         self._intro_body.setWordWrap(True)
-        self._intro_body.setStyleSheet("color: #34495e; line-height: 1.8;")
+        self._intro_body.setStyleSheet(
+            "color: #2c3e50; line-height: 1.9; padding: 0 20px;"
+        )
         ip_layout.addWidget(self._intro_body)
 
-        ip_layout.addStretch()
+        ip_layout.addStretch(3)
 
         # "Next page" button at bottom right
         next_row = QHBoxLayout()
@@ -772,22 +887,34 @@ class Part1Widget(QWidget):
 
         # ── Page 1: Question page ─────────────────────────────────────────────
         q_page = QWidget()
+        q_page.setStyleSheet("background: white;")
         qp_layout = QVBoxLayout(q_page)
-        qp_layout.setContentsMargins(15, 12, 15, 12)
-        qp_layout.setSpacing(10)
+        qp_layout.setContentsMargins(30, 20, 30, 16)
+        qp_layout.setSpacing(14)
 
         self.q_label = QLabel("Question 1 of 11")
-        self.q_label.setFont(QFont("Arial", 13, QFont.Bold))
-        self.q_label.setStyleSheet("color: #2c3e50; padding: 4px 0;")
+        self.q_label.setFont(QFont("Arial", 16, QFont.Bold))
+        self.q_label.setStyleSheet(
+            "color: #2c3e50; padding: 6px 0; border-bottom: 2px solid #3498db; margin-bottom: 4px;"
+        )
         qp_layout.addWidget(self.q_label)
 
         grp = QGroupBox("Text to Read Aloud")
-        grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 12px; }")
+        grp.setStyleSheet(
+            "QGroupBox { font-weight: bold; font-size: 13px; color: #2980b9; "
+            "border: 1px solid #aed6f1; border-radius: 8px; margin-top: 10px; "
+            "background: #fbfcfe; padding-top: 6px; }"
+            "QGroupBox::title { subcontrol-origin: margin; left: 14px; padding: 0 6px; }"
+        )
         gl = QVBoxLayout(grp)
+        gl.setContentsMargins(12, 12, 12, 12)
         self.text_edit = QTextEdit()
-        self.text_edit.setMinimumHeight(160)
-        self.text_edit.setFont(QFont("Arial", 12))
-        self.text_edit.setStyleSheet(STYLE_READ)
+        self.text_edit.setMinimumHeight(220)
+        self.text_edit.setFont(QFont("Georgia", 17))
+        self.text_edit.setStyleSheet(
+            "border: none; background: transparent; "
+            "color: #1a252f; line-height: 1.8; padding: 4px;"
+        )
         self.text_edit.setReadOnly(True)
         self.text_edit.textChanged.connect(self._sync_text)
         gl.addWidget(self.text_edit)
@@ -799,6 +926,20 @@ class Part1Widget(QWidget):
         qp_layout.addWidget(self.countdown)
 
         qp_layout.addStretch()
+
+        # Bottom-right: STOP and RESTART buttons
+        bottom_row = QHBoxLayout()
+        bottom_row.addStretch()
+        self.stop_btn = QPushButton("■  Stop")
+        self.stop_btn.setStyleSheet(BTN_RESET)
+        self.stop_btn.clicked.connect(self._stop)
+        self.restart_btn = QPushButton("↺  Restart")
+        self.restart_btn.setStyleSheet(BTN_BLUE)
+        self.restart_btn.clicked.connect(self._restart)
+        bottom_row.addWidget(self.stop_btn)
+        bottom_row.addWidget(self.restart_btn)
+        qp_layout.addLayout(bottom_row)
+
         self.content_stack.addWidget(q_page)
 
         # Default to intro page
@@ -822,7 +963,10 @@ class Part1Widget(QWidget):
         self.text_edit.setPlainText(data[index]['text'] if index < len(data) else "")
         self.text_edit.blockSignals(False)
         self.text_edit.setReadOnly(True)
-        self.text_edit.setStyleSheet(STYLE_READ)
+        self.text_edit.setStyleSheet(
+            "border: none; background: transparent; "
+            "color: #1a252f; line-height: 1.8; padding: 4px;"
+        )
         self.countdown.reset()
         self.countdown.setVisible(False)
         self.content_stack.setCurrentIndex(1)
@@ -849,7 +993,10 @@ class Part1Widget(QWidget):
             self.content_stack.setCurrentIndex(1)
         else:
             self.text_edit.setReadOnly(True)
-            self.text_edit.setStyleSheet(STYLE_READ)
+            self.text_edit.setStyleSheet(
+                "border: none; background: transparent; "
+                "color: #1a252f; line-height: 1.8; padding: 4px;"
+            )
 
     def is_active(self) -> bool:
         """Returns True if the automatic exam flow is running."""
@@ -930,6 +1077,12 @@ class Part1Widget(QWidget):
         else:
             # Question 2 finished — mark done
             self.countdown.mark_done()
+
+    def _stop(self):
+        self._cancel_all()
+
+    def _restart(self):
+        self.load_question(self.current_index)
 
     def _sync_text(self):
         if not self.edit_mode:
@@ -1882,7 +2035,7 @@ class MainWindow(QMainWindow):
 
     def _build_bottom_bar(self):
         self.bottom_bar = QWidget()
-        self.bottom_bar.setFixedHeight(52)
+        self.bottom_bar.setFixedHeight(62)
         self.bottom_bar.setStyleSheet("background: #34495e; border-top: 2px solid #2c3e50;")
         layout = QHBoxLayout(self.bottom_bar)
         layout.setContentsMargins(12, 6, 12, 6)
@@ -1911,11 +2064,53 @@ class MainWindow(QMainWindow):
         self.pos_label = QLabel("")
         self.pos_label.setStyleSheet("color: #bdc3c7; font-size: 12px; font-weight: bold;")
 
+        # ── Center: recording button ──────────────────────────────────────────
+        self._record_thread: Optional[RecordThread] = None
+
+        self.record_btn = QPushButton("🎙")
+        self.record_btn.setFixedSize(46, 46)
+        self.record_btn.setCheckable(True)
+        self.record_btn.setToolTip(
+            "Click to start recording your voice.\nClick again to stop and save."
+            if PYAUDIO_AVAILABLE else
+            "Recording unavailable — install pyaudio"
+        )
+        self.record_btn.setEnabled(PYAUDIO_AVAILABLE)
+        self._rec_idle_style = """
+            QPushButton {
+                background: #c0392b; color: white;
+                border-radius: 23px; font-size: 22px;
+                border: 3px solid #e74c3c;
+            }
+            QPushButton:hover { background: #e74c3c; }
+            QPushButton:disabled { background: #555; border-color: #666; }
+        """
+        self._rec_active_style = """
+            QPushButton {
+                background: #7b241c; color: white;
+                border-radius: 23px; font-size: 22px;
+                border: 3px solid #f1948a;
+            }
+        """
+        self.record_btn.setStyleSheet(self._rec_idle_style)
+        self.record_btn.clicked.connect(self._toggle_recording)
+
+        self.rec_label = QLabel("Ready" if PYAUDIO_AVAILABLE else "No pyaudio")
+        self.rec_label.setStyleSheet("color: #bdc3c7; font-size: 11px;")
+        self.rec_label.setAlignment(Qt.AlignCenter)
+
+        rec_col = QVBoxLayout()
+        rec_col.setSpacing(2)
+        rec_col.setContentsMargins(0, 0, 0, 0)
+        rec_col.addWidget(self.record_btn, 0, Qt.AlignCenter)
+        rec_col.addWidget(self.rec_label, 0, Qt.AlignCenter)
+
         layout.addWidget(self.prev_btn)
         layout.addWidget(self.next_btn)
         layout.addStretch()
-        layout.addWidget(self.pos_label)
+        layout.addLayout(rec_col)
         layout.addStretch()
+        layout.addWidget(self.pos_label)
         layout.addWidget(self.mark_btn)
         layout.addWidget(quit_btn)
 
@@ -1937,17 +2132,24 @@ class MainWindow(QMainWindow):
             running = w.countdown.is_running()
 
         if running:
-            reply = QMessageBox.question(
-                self, "Timer Running",
-                "A timer is currently running.\nStop it and navigate away?",
-                QMessageBox.Yes | QMessageBox.No
-            )
-            if reply == QMessageBox.No:
-                return False
-            if hasattr(w, '_cancel_all'):
-                w._cancel_all()
-            elif hasattr(w, 'countdown'):
-                w.countdown.stop()
+            if self._part == 1:
+                # Silently stop Part 1 without prompting
+                if hasattr(w, '_cancel_all'):
+                    w._cancel_all()
+                elif hasattr(w, 'countdown'):
+                    w.countdown.stop()
+            else:
+                reply = QMessageBox.question(
+                    self, "Timer Running",
+                    "A timer is currently running.\nStop it and navigate away?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if reply == QMessageBox.No:
+                    return False
+                if hasattr(w, '_cancel_all'):
+                    w._cancel_all()
+                elif hasattr(w, 'countdown'):
+                    w.countdown.stop()
         return True
 
     def _go_to(self, part: int, index: int):
@@ -2121,8 +2323,53 @@ class MainWindow(QMainWindow):
                 w.refresh()
             self.statusBar().showMessage(f"✓  Loaded: {os.path.basename(path)}", 4000)
 
+    # ── Recording ─────────────────────────────────────────────────────────────
+
+    def _toggle_recording(self):
+        if self._record_thread and self._record_thread.isRunning():
+            # Stop recording
+            self._record_thread.request_stop()
+        else:
+            # Start recording
+            ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            part = self._part
+            idx  = self._idx
+            if part == 0:
+                q_str = "Directions"
+            elif part == 1 and idx == -1:
+                q_str = "P1_Intro"
+            else:
+                q_str = f"P{part}_Q{idx + 1}"
+            filepath = os.path.join("recordings", f"{q_str}_{ts}.wav")
+
+            self._record_thread = RecordThread(filepath)
+            self._record_thread.record_started.connect(self._on_record_started)
+            self._record_thread.record_finished.connect(self._on_record_finished)
+            self._record_thread.start()
+
+    def _on_record_started(self):
+        self.record_btn.setStyleSheet(self._rec_active_style)
+        self.rec_label.setText("● REC")
+        self.rec_label.setStyleSheet("color: #e74c3c; font-size: 11px; font-weight: bold;")
+
+    def _on_record_finished(self, filepath: str):
+        self.record_btn.setChecked(False)
+        self.record_btn.setStyleSheet(self._rec_idle_style)
+        if filepath:
+            name = os.path.basename(filepath)
+            self.rec_label.setText(f"Saved: {name}")
+            self.rec_label.setStyleSheet("color: #2ecc71; font-size: 10px;")
+            self.statusBar().showMessage(f"✓  Recording saved: {filepath}", 5000)
+        else:
+            self.rec_label.setText("Error")
+            self.rec_label.setStyleSheet("color: #e74c3c; font-size: 11px;")
+
     def closeEvent(self, event):
         tts.stop()
+        # Stop any active recording
+        if self._record_thread and self._record_thread.isRunning():
+            self._record_thread.request_stop()
+            self._record_thread.wait(3000)
         if self.edit_mode:
             reply = QMessageBox.question(
                 self, "Unsaved Changes",
@@ -2142,6 +2389,7 @@ class MainWindow(QMainWindow):
 # ============================================================
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    os.makedirs("recordings", exist_ok=True)
 
     app = QApplication(sys.argv)
     app.setApplicationName("TOEIC Speaking Practice")
