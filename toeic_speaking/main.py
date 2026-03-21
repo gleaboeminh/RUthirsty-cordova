@@ -381,6 +381,7 @@ class CountdownWidget(QWidget):
         super().__init__(parent)
         self._phase = Phase.IDLE
         self._remaining = 0
+        self._hms = False
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self._tick)
@@ -417,9 +418,10 @@ class CountdownWidget(QWidget):
             f"color: {fg}; background: {bg}; border-radius: 10px; padding: 8px 20px;"
         )
 
-    def start(self, phase: Phase, seconds: int):
+    def start(self, phase: Phase, seconds: int, hms: bool = False):
         self._phase = phase
         self._remaining = seconds
+        self._hms = hms
         self._update_display()
         self._timer.start()
 
@@ -431,6 +433,7 @@ class CountdownWidget(QWidget):
         self._timer.stop()
         self._phase = Phase.IDLE
         self._remaining = 0
+        self._hms = False
         self.phase_label.setText("READY")
         self.time_label.setText("00:00")
         self._set_time_style(Phase.IDLE)
@@ -451,8 +454,13 @@ class CountdownWidget(QWidget):
             self.phase_finished.emit(done)
 
     def _update_display(self):
-        m, s = divmod(max(0, self._remaining), 60)
-        self.time_label.setText(f"{m:02d}:{s:02d}")
+        if self._hms:
+            h, rem = divmod(max(0, self._remaining), 3600)
+            m, s = divmod(rem, 60)
+            self.time_label.setText(f"{h:02d}:{m:02d}:{s:02d}")
+        else:
+            m, s = divmod(max(0, self._remaining), 60)
+            self.time_label.setText(f"{m:02d}:{s:02d}")
         self.phase_label.setText(PHASE_LABELS.get(self._phase, ""))
         self._set_time_style(self._phase)
 
@@ -551,6 +559,7 @@ class Part1Widget(QWidget):
         super().__init__(parent)
         self.edit_mode = False
         self.current_index = 0
+        self._tts_connected = False
         self._build_ui()
         self.load_question(0)
 
@@ -559,13 +568,49 @@ class Part1Widget(QWidget):
         layout.setSpacing(10)
         layout.setContentsMargins(15, 12, 15, 12)
 
-        self.intro = InstructionBox(self.TITLE, self.BODY)
-        layout.addWidget(self.intro)
-
         self.q_label = QLabel("Question 1 of 11")
         self.q_label.setFont(QFont("Arial", 13, QFont.Bold))
         self.q_label.setStyleSheet("color: #2c3e50; padding: 4px 0;")
         layout.addWidget(self.q_label)
+
+        # Stacked content: page 0 = instructions, page 1 = question text
+        self.content_stack = QStackedWidget()
+
+        # --- Page 0: Instructions ---
+        instr_page = QWidget()
+        ip_layout = QVBoxLayout(instr_page)
+        ip_layout.setContentsMargins(0, 4, 0, 4)
+
+        instr_frame = QGroupBox("Instructions")
+        instr_frame.setStyleSheet(
+            "QGroupBox { font-weight: bold; font-size: 13px; border: 2px solid #3498db; "
+            "border-radius: 8px; margin-top: 8px; background: #ebf5fb; }"
+            "QGroupBox::title { subcontrol-origin: margin; left: 10px; color: #2980b9; }"
+        )
+        if_layout = QVBoxLayout(instr_frame)
+        if_layout.setSpacing(10)
+
+        title_lbl = QLabel(self.TITLE)
+        title_lbl.setFont(QFont("Arial", 13, QFont.Bold))
+        title_lbl.setWordWrap(True)
+        title_lbl.setStyleSheet("color: #2c3e50;")
+        if_layout.addWidget(title_lbl)
+
+        body_lbl = QLabel(self.BODY)
+        body_lbl.setFont(QFont("Arial", 12))
+        body_lbl.setWordWrap(True)
+        body_lbl.setStyleSheet("color: #444; margin-top: 4px;")
+        if_layout.addWidget(body_lbl)
+        if_layout.addStretch()
+
+        ip_layout.addWidget(instr_frame)
+        ip_layout.addStretch()
+        self.content_stack.addWidget(instr_page)
+
+        # --- Page 1: Question text ---
+        q_page = QWidget()
+        qp_layout = QVBoxLayout(q_page)
+        qp_layout.setContentsMargins(0, 4, 0, 4)
 
         grp = QGroupBox("Text to Read Aloud")
         grp.setStyleSheet("QGroupBox { font-weight: bold; font-size: 12px; }")
@@ -576,10 +621,15 @@ class Part1Widget(QWidget):
         self.text_edit.setStyleSheet(STYLE_READ)
         self.text_edit.textChanged.connect(self._sync_text)
         gl.addWidget(self.text_edit)
-        layout.addWidget(grp)
+        qp_layout.addWidget(grp)
+        qp_layout.addStretch()
+        self.content_stack.addWidget(q_page)
+
+        layout.addWidget(self.content_stack)
 
         self.countdown = CountdownWidget()
         self.countdown.phase_finished.connect(self._on_phase_done)
+        self.countdown.setVisible(False)
         layout.addWidget(self.countdown)
 
         btn_row = QHBoxLayout()
@@ -626,23 +676,55 @@ class Part1Widget(QWidget):
     def _start(self):
         if self.countdown.is_running():
             return
-        tts.speak("Begin preparing now")
         self.start_btn.setEnabled(False)
         self.text_edit.setReadOnly(True)
         self.text_edit.setStyleSheet(STYLE_READ)
+
+        # Show instructions page and read instructions aloud
+        self.content_stack.setCurrentIndex(0)
+        self.countdown.setVisible(False)
+        tts.speak(self.BODY)
+
+        if tts.available:
+            self._tts_connected = True
+            tts._worker.finished.connect(self._on_instructions_read)
+        else:
+            # No TTS — transition after brief delay
+            QTimer.singleShot(300, self._on_instructions_read)
+
+    def _on_instructions_read(self):
+        if self._tts_connected:
+            try:
+                tts._worker.finished.disconnect(self._on_instructions_read)
+            except Exception:
+                pass
+            self._tts_connected = False
+        # Switch to question page, show countdown, start preparation
+        self.content_stack.setCurrentIndex(1)
+        self.countdown.setVisible(True)
+        tts.speak("Begin preparing now")
         self.countdown.start(Phase.PREPARATION, 45)
 
     def _on_phase_done(self, phase):
         if phase == Phase.PREPARATION:
             tts.speak("Begin reading now")
-            self.countdown.start(Phase.SPEAKING, 45)
+            self.countdown.start(Phase.SPEAKING, 45, hms=True)
         elif phase == Phase.SPEAKING:
             self.countdown.mark_done()
             self.start_btn.setEnabled(True)
             self._apply_edit()
 
     def _reset(self):
+        if self._tts_connected:
+            try:
+                tts._worker.finished.disconnect(self._on_instructions_read)
+            except Exception:
+                pass
+            self._tts_connected = False
+        tts.stop()
         self.countdown.reset()
+        self.countdown.setVisible(False)
+        self.content_stack.setCurrentIndex(1)
         self.start_btn.setEnabled(True)
         self._apply_edit()
 
